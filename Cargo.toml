@@ -1,0 +1,27 @@
+[package]
+name    = "sixel"
+version = "0.1.0"
+
+authors = ["meh. <meh@schizofreni.co>"]
+license = "WTFPL"
+
+description = "Sixel encoding/decoding."
+repository  = "https://github.com/meh/rust-sixel"
+keywords    = ["ecma48", "iso6429", "control", "sixel", "dec"]
+
+[profile.release]
+debug = true
+lto   = true
+panic = "abort"
+
+[dev-dependencies]
+# Examples.
+clap = "2"
+
+[dependencies]
+control-code = "0.5.3"
+termsize     = "0.1"
+terminfo     = "0.1"
+
+picto = "0.4"
+fnv   = "1.0"
