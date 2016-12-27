@@ -28,6 +28,7 @@ pub struct Settings {
 	size:    Option<(u32, u32)>,
 	padding: Option<(u32, u32)>,
 	center:  bool,
+	hsl:     bool,
 }
 
 impl Settings {
@@ -48,6 +49,11 @@ impl Settings {
 
 	pub fn center(&mut self) -> &mut Self {
 		self.center = true;
+		self
+	}
+
+	pub fn hsl(&mut self) -> &mut Self {
+		self.hsl = true;
 		self
 	}
 }
@@ -129,8 +135,11 @@ pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) ->
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
 						SIXEL::Color::Rgba(r, g, b, a)), true)?;
 				}
+				else if !settings.hsl {
+					control::format_to(output.by_ref(), &SIXEL::Define(id,
+						SIXEL::Color::Rgb(r, g, b)), true)?;
+				}
 				else {
-					// Use HSL since it has a bigger color space.
 					let hsl = Hsl::<f32>::from(Rgba::new_u8(r, g, b, a));
 
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
