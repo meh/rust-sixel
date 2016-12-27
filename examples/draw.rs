@@ -16,7 +16,7 @@ extern crate clap;
 use clap::{App, Arg};
 
 extern crate sixel;
-use sixel::{Settings, Encoder};
+use sixel::{Environment, encoder};
 
 extern crate picto;
 use picto::read;
@@ -32,10 +32,23 @@ fn main() {
 			.required(true)
 			.help("The path to the image to draw."))
 		.arg(Arg::with_name("colors")
-			.short("c")
+			.short("C")
 			.long("colors")
 			.takes_value(true)
 			.help("Amount of colors to use."))
+		.arg(Arg::with_name("padding")
+			.short("p")
+			.long("padding")
+			.takes_value(true)
+			.help("Padding for the image."))
+		.arg(Arg::with_name("center")
+			.short("c")
+			.long("center")
+			.help("Center the image."))
+		.arg(Arg::with_name("fit")
+			.short("f")
+			.long("fit")
+			.help("Fit the image to the terminal size."))
 		.arg(Arg::with_name("width")
 				.short("W")
 				.long("width")
@@ -46,32 +59,64 @@ fn main() {
 				.long("height")
 				.takes_value(true)
 				.help("Height of the image."))
+		.arg(Arg::with_name("newline")
+			.short("n")
+			.long("newline")
+			.help("Add a new line at the end."))
+		.arg(Arg::with_name("wait")
+			.short("w")
+			.long("wait")
+			.help("Wait for input."))
 		.get_matches();
 
-	let mut settings = Settings::new();
+	let     environment = Environment::query().unwrap();
+	let mut settings    = encoder::Settings::default();
 
 	if let Some(colors) = matches.value_of("colors") {
 		settings.colors(colors.parse().unwrap());
 	}
 
-	match (matches.value_of("width"), matches.value_of("height")) {
-		(Some(width), Some(height)) => {
-			settings.size(width.parse().unwrap(), height.parse().unwrap());
-		}
+	let size = match (matches.value_of("width"), matches.value_of("height")) {
+		(Some(width), Some(height)) =>
+			Some((width.parse().unwrap(), height.parse().unwrap())),
 
-		(Some(width), None) => {
-			settings.size(width.parse().unwrap(), width.parse().unwrap());
-		}
+		(Some(width), None) =>
+			Some((width.parse().unwrap(), width.parse().unwrap())),
 
-		(None, Some(height)) => {
-			settings.size(height.parse().unwrap(), height.parse().unwrap());
-		}
+		(None, Some(height)) =>
+			Some((height.parse().unwrap(), height.parse().unwrap())),
 
-		(None, None) => ()
+		_ if matches.is_present("fit") =>
+			Some(environment.limits()),
+
+		_ if matches.is_present("center") =>
+			Some((environment.limits().0, environment.limits().0)),
+
+		_ =>
+			None
+	};
+
+	if let Some((width, height)) = size {
+		settings.size(environment.size(width, height).unwrap());
 	}
 
-	let encoder = Encoder::new(settings.build());
-	let image   = read::from_path(matches.value_of("INPUT").unwrap()).unwrap();
+	if matches.is_present("center") {
+		settings.center();
+	}
 
-	encoder.encode(&image, io::stdout()).unwrap();
+	if let Some(size) = matches.value_of("padding") {
+		settings.padding(environment.padding(size.parse().unwrap()).unwrap());
+	}
+
+	let image = read::from_path(matches.value_of("INPUT").unwrap()).unwrap();
+	encoder::encode(&settings, &image, io::stdout()).unwrap();
+
+	if matches.is_present("newline") {
+		println!();
+	}
+
+	if matches.is_present("wait") {
+		let mut dummy = String::new();
+		io::stdin().read_line(&mut dummy).unwrap();
+	}
 }
