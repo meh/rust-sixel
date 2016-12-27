@@ -75,6 +75,9 @@ fn main() {
 	if let Some(colors) = matches.value_of("colors") {
 		settings.colors(colors.parse().unwrap());
 	}
+	else if let Some(colors) = environment.colors() {
+		settings.colors(colors);
+	}
 
 	let size = match (matches.value_of("width"), matches.value_of("height")) {
 		(Some(width), Some(height)) =>
