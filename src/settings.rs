@@ -12,14 +12,12 @@
 //
 //  0. You just DO WHAT THE FUCK YOU WANT TO.
 
-use termsize;
-use terminfo::{Database, capability as cap};
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct Settings {
 	colors: Option<u16>,
 	size:   Option<(u32, u32)>,
-	limits: Option<(u32, u32)>,
+	cell:   Option<(u32, u32)>,
 }
 
 impl Default for Settings {
@@ -28,11 +26,11 @@ impl Default for Settings {
 	}
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Default, Debug)]
+#[derive(Eq, PartialEq, Default, Debug)]
 pub struct Builder {
 	colors: Option<u16>,
 	size:   Option<(u32, u32)>,
-	limits: Option<(u32, u32)>,
+	cell:   Option<(u32, u32)>,
 }
 
 impl Settings {
@@ -48,8 +46,8 @@ impl Settings {
 		self.size
 	}
 
-	pub fn limits(&self) -> Option<(u32, u32)> {
-		self.limits
+	pub fn cell(&self) -> Option<(u32, u32)> {
+		self.cell
 	}
 }
 
@@ -76,8 +74,15 @@ impl Builder {
 				None
 			}),
 
-			size:   self.size,
-			limits: termsize::get().map(|c| (c.cols as u32, c.rows as u32)),
+			size: self.size,
+
+			cell: termsize::get().and_then(|c|
+				if c.width.is_some() && c.height.is_some() {
+					Some(((c.width.unwrap() / c.cols) as u32, (c.height.unwrap() / c.rows) as u32))
+				}
+				else {
+					None
+				}),
 		}
 	}
 }

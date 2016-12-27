@@ -22,153 +22,183 @@ use picto::processing::prelude::*;
 use control;
 use control::DEC::SIXEL;
 
-use settings::Settings;
-
-pub struct Encoder {
-	settings: Settings,
+#[derive(Eq, PartialEq, Copy, Clone, Default, Debug)]
+pub struct Settings {
+	colors:  Option<u16>,
+	size:    Option<(u32, u32)>,
+	padding: Option<(u32, u32)>,
+	center:  bool,
 }
 
-impl Encoder {
-	pub fn new(settings: Settings) -> Self {
-		Encoder {
-			settings: settings,
+impl Settings {
+	pub fn colors(&mut self, value: u16) -> &mut Self {
+		self.colors = Some(value);
+		self
+	}
+
+	pub fn size(&mut self, size: (u32, u32)) -> &mut Self {
+		self.size = Some(size);
+		self
+	}
+
+	pub fn padding(&mut self, size: (u32, u32)) -> &mut Self {
+		self.padding = Some(size);
+		self
+	}
+
+	pub fn center(&mut self) -> &mut Self {
+		self.center = true;
+		self
+	}
+}
+
+pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) -> io::Result<()> {
+	let mut output = BufWriter::new(output);
+
+	let (mut width, mut height) = settings.size.unwrap_or(image.dimensions());
+	let (w,     h)              = (
+		width - (settings.padding.unwrap_or((0, 0)).0 * 2),
+		height - (settings.padding.unwrap_or((0, 0)).1 * 2));
+
+	let image = if w < image.width() || h < image.height() {
+		image.scale_to::<scaler::Lanczos3>(w, h)
+	}
+	else {
+		image.scale_to::<scaler::Linear>(w, h)
+	};
+
+	height = image.height() + settings.padding.unwrap_or((0, 0)).1 * 2;
+
+	if !settings.center {
+		width = image.width() + settings.padding.unwrap_or((0, 0)).0 * 2;
+	}
+
+	let image  = match settings.colors {
+		Some(8)   => image.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
+		Some(16)  => image.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
+		Some(64)  => image.dither::<ditherer::NeuQuant>(64),
+		Some(256) => image.dither::<ditherer::NeuQuant>(256),
+		Some(n)   => image.dither::<ditherer::Palette<ditherer::palette::table::Gray2>>(n as u32),
+		None      => image,
+	};
+
+	let mut source = buffer::Rgba::new(width, height);
+	let     x_diff = (width - image.width()) / 2;
+	let     y_diff = (height - image.height()) / 2;
+
+	for (x, y, mut px) in source.pixels_mut() {
+		if x >= x_diff && x < width - x_diff && x - x_diff < image.width() &&
+			 y >= y_diff && y < height - y_diff && y - y_diff < image.height()
+		{
+			px.set(&image.get(x - x_diff, y - y_diff));
 		}
 	}
 
-	pub fn encode<W: Write>(&self, buffer: &buffer::Rgba, output: W) -> io::Result<()> {
-		let mut output = BufWriter::new(output);
+	let buffer = source.pixels().map(|(_, _, p)| p.get().to_pixel())
+		.collect::<Vec<(u8, u8, u8, u8)>>();
 
-		let (width, height) = self.settings.size()
-			.unwrap_or(buffer.dimensions());
+	output.write_all(b"\x1BP9q")?;
 
-		let buffer = if width < buffer.width() || height < buffer.height() {
-			buffer.scale_to::<scaler::Lanczos3>(width, height)
+	let mut id       = 0;
+	let mut register = HashMap::<(u8, u8, u8, u8), u32, BuildHasherDefault<FnvHasher>>::default();
+
+	for row in 0 .. height / 6 {
+		let mut colors = HashSet::<(u8, u8, u8, u8), BuildHasherDefault<FnvHasher>>::default();
+
+		// Find all the colors in the Sixel line.
+		for x in 0 .. width {
+			for y in row * 6 .. row * 6 + 6 {
+				// Remove the alpha component if unavailable.
+				if settings.colors.is_none() {
+					colors.insert(buffer[(y * width + x) as usize]);
+				}
+				else {
+					let (r, g, b, _) = buffer[(y * width + x) as usize];
+					colors.insert((r, g, b, 255));
+				}
+			}
 		}
-		else {
-			buffer.scale_to::<scaler::Linear>(width, height)
-		};
 
-		let (width, height) = buffer.dimensions();
+		// Register the colors if needed.
+		for &(r, g, b, a) in &colors {
+			if !register.contains_key(&(r, g, b, a)) {
+				register.insert((r, g, b, a), id);
 
-		let buffer = match self.settings.colors() {
-			Some(8)   => buffer.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
-			Some(16)  => buffer.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
-			Some(64)  => buffer.dither::<ditherer::NeuQuant>(64),
-			Some(256) => buffer.dither::<ditherer::NeuQuant>(256),
-			Some(n)   => buffer.dither::<ditherer::Palette<ditherer::palette::table::Gray2>>(n as u32),
-			None      => buffer,
-		};
+				// Print the properly colored register.
+				if settings.colors.is_none() {
+					control::format_to(output.by_ref(), &SIXEL::Define(id,
+						SIXEL::Color::Rgba(r, g, b, a)), true)?;
+				}
+				else {
+					// Use HSL since it has a bigger color space.
+					let hsl = Hsl::<f32>::from(Rgba::new_u8(r, g, b, a));
 
-		let buffer = buffer.pixels().map(|(_, _, p)| p.get().to_pixel())
-			.collect::<Vec<(u8, u8, u8, u8)>>();
+					control::format_to(output.by_ref(), &SIXEL::Define(id,
+						SIXEL::Color::Hsl(
+							hsl.hue.to_positive_degrees() as u16,
+							(hsl.saturation * 100.0) as u8,
+							(hsl.lightness * 100.0) as u8)), true)?;
+				}
 
-		output.write_all(b"\x1BP9q\n")?;
+				id += 1;
+			}
+		}
 
-		let mut id       = 0;
-		let mut register = HashMap::<(u8, u8, u8, u8), u32, BuildHasherDefault<FnvHasher>>::default();
+		// For each color generate the sixel line.
+		for color in &colors {
+			control::format_to(output.by_ref(), &SIXEL::Enable(
+				*register.get(color).unwrap()), true)?;
 
-		for row in 0 .. height / 6 {
-			let mut colors = HashSet::<(u8, u8, u8, u8), BuildHasherDefault<FnvHasher>>::default();
+			let mut previous = None;
+			let mut count    = 0;
 
-			// Find all the colors in the Sixel line.
 			for x in 0 .. width {
-				for y in row * 6 .. row * 6 + 6 {
-					// Remove the alpha component if unavailable.
-					if self.settings.colors().is_none() {
-						colors.insert(buffer[(y * width + x) as usize]);
-					}
-					else {
-						let (r, g, b, _) = buffer[(y * width + x) as usize];
-						colors.insert((r, g, b, 255));
-					}
-				}
-			}
+				let mut current = SIXEL::Map::default();
 
-			// Register the colors if needed.
-			for &(r, g, b, a) in &colors {
-				if !register.contains_key(&(r, g, b, a)) {
-					register.insert((r, g, b, a), id);
-
-					// Print the properly colored register.
-					if self.settings.colors().is_none() {
-						control::format_to(output.by_ref(), &SIXEL::Define(id,
-							SIXEL::Color::Rgba(r, g, b, a)), true)?;
-					}
-					else {
-						// Use HSL since it has a bigger color space.
-						let hsl = Hsl::<f32>::from(Rgba::new_u8(r, g, b, a));
-
-						control::format_to(output.by_ref(), &SIXEL::Define(id,
-							SIXEL::Color::Hsl(
-								hsl.hue.to_positive_degrees() as u16,
-								(hsl.saturation * 100.0) as u8,
-								(hsl.lightness * 100.0) as u8)), true)?;
-					}
-
-					id += 1;
-				}
-			}
-
-			output.write_all(b"\n")?;
-
-			// For each color generate the sixel line.
-			for color in &colors {
-				control::format_to(output.by_ref(), &SIXEL::Enable(
-					*register.get(color).unwrap()), true)?;
-
-				let mut previous = None;
-				let mut count    = 0;
-
-				for x in 0 .. width {
-					let mut current = SIXEL::Map::default();
-
-					for (i, y) in (row * 6 .. row * 6 + 6).enumerate() {
-						if *color == buffer[(y * width + x) as usize] {
-							current.set(i as u8, true);
-						}
-					}
-
-					if let Some(value) = previous {
-						if value == current {
-							count += 1;
-						}
-						else {
-							control::format_to(output.by_ref(), &if count == 1 {
-								SIXEL::Value(value)
-							}
-							else {
-								SIXEL::Repeat(count, value)
-							}, true)?;
-
-							previous = Some(current);
-							count    = 1;
-						}
-					}
-					else {
-						previous = Some(current);
-						count    = 1;
+				for (i, y) in (row * 6 .. row * 6 + 6).enumerate() {
+					if *color == buffer[(y * width + x) as usize] {
+						current.set(i as u8, true);
 					}
 				}
 
 				if let Some(value) = previous {
-					control::format_to(output.by_ref(), &if count == 1 {
-						SIXEL::Value(value)
+					if value == current {
+						count += 1;
 					}
 					else {
-						SIXEL::Repeat(count, value)
-					}, true)?;
-				}
+						control::format_to(output.by_ref(), &if count == 1 {
+							SIXEL::Value(value)
+						}
+						else {
+							SIXEL::Repeat(count, value)
+						}, true)?;
 
-				control::format_to(output.by_ref(), &SIXEL::CarriageReturn, true)?;
-				output.write_all(b"\n")?;
+						previous = Some(current);
+						count    = 1;
+					}
+				}
+				else {
+					previous = Some(current);
+					count    = 1;
+				}
 			}
 
-			control::format_to(output.by_ref(), &SIXEL::LineFeed, true)?;
-			output.write_all(b"\n")?;
+			if let Some(value) = previous {
+				control::format_to(output.by_ref(), &if count == 1 {
+					SIXEL::Value(value)
+				}
+				else {
+					SIXEL::Repeat(count, value)
+				}, true)?;
+			}
+
+			control::format_to(output.by_ref(), &SIXEL::CarriageReturn, true)?;
 		}
 
-		output.write_all(b"\x1B\\\n")?;
-
-		Ok(())
+		control::format_to(output.by_ref(), &SIXEL::LineFeed, true)?;
 	}
+
+	output.write_all(b"\x1B\\")?;
+
+	Ok(())
 }

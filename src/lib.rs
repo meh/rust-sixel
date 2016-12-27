@@ -20,8 +20,8 @@ extern crate terminfo;
 extern crate picto;
 extern crate fnv;
 
-mod settings;
-pub use settings::Settings;
+mod environment;
+pub use environment::Environment;
 
-mod encoder;
-pub use encoder::Encoder;
+pub mod encoder;
+pub use encoder::encode;
