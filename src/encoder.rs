@@ -79,7 +79,7 @@ pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) ->
 		width = image.width() + settings.padding.unwrap_or((0, 0)).0 * 2;
 	}
 
-	let image  = match settings.colors {
+	let image = match settings.colors {
 		Some(8)   => image.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
 		Some(16)  => image.dither::<ditherer::Palette<ditherer::palette::table::VT340>>(16),
 		Some(64)  => image.dither::<ditherer::NeuQuant>(64),
