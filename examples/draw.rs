@@ -39,7 +39,6 @@ fn main() {
 		.arg(Arg::with_name("high-color")
 			.short("I")
 			.long("high-color")
-			.takes_value(true)
 			.help("Use a larger color space."))
 		.arg(Arg::with_name("padding")
 			.short("p")
@@ -85,7 +84,7 @@ fn main() {
 	}
 
 	if matches.is_present("high-color") {
-		settings.hsl();
+		settings.high();
 	}
 
 	let size = match (matches.value_of("width"), matches.value_of("height")) {
