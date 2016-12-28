@@ -36,6 +36,11 @@ fn main() {
 			.long("colors")
 			.takes_value(true)
 			.help("Amount of colors to use."))
+		.arg(Arg::with_name("high-color")
+			.short("I")
+			.long("high-color")
+			.takes_value(true)
+			.help("Use a larger color space."))
 		.arg(Arg::with_name("padding")
 			.short("p")
 			.long("padding")
@@ -77,6 +82,10 @@ fn main() {
 	}
 	else if let Some(colors) = environment.colors() {
 		settings.colors(colors);
+	}
+
+	if matches.is_present("high-color") {
+		settings.hsl();
 	}
 
 	let size = match (matches.value_of("width"), matches.value_of("height")) {
