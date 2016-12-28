@@ -19,8 +19,8 @@ panic = "abort"
 clap = "2"
 
 [dependencies]
-control-code = "0.5.3"
-termsize     = "0.1"
+control-code = "0.5.7"
+termsize     = { git = "https://github.com/meh/termsize" }
 terminfo     = "0.1"
 
 picto = "0.4"
