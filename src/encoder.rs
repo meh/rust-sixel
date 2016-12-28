@@ -16,7 +16,7 @@ use std::io::{self, Write, BufWriter};
 use std::collections::{HashSet, HashMap};
 use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
-use picto::buffer;
+use picto::{view, buffer};
 use picto::color::{Rgba, Hsl};
 use picto::processing::prelude::*;
 use control;
@@ -28,7 +28,8 @@ pub struct Settings {
 	size:    Option<(u32, u32)>,
 	padding: Option<(u32, u32)>,
 	center:  bool,
-	hsl:     bool,
+	high:    bool,
+	fast:    bool,
 }
 
 impl Settings {
@@ -52,13 +53,22 @@ impl Settings {
 		self
 	}
 
-	pub fn hsl(&mut self) -> &mut Self {
-		self.hsl = true;
+	pub fn high(&mut self) -> &mut Self {
+		self.high = true;
+		self
+	}
+
+	pub fn fast(&mut self) -> &mut Self {
+		self.fast = true;
 		self
 	}
 }
 
-pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) -> io::Result<()> {
+pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<()>
+	where T: Into<view::Read<'a, Rgba, u8>>,
+	      W: Write
+{
+	let     image  = image.into();
 	let mut output = BufWriter::new(output);
 
 	let (mut width, mut height) = settings.size.unwrap_or(image.dimensions());
@@ -66,7 +76,10 @@ pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) ->
 		width - (settings.padding.unwrap_or((0, 0)).0 * 2),
 		height - (settings.padding.unwrap_or((0, 0)).1 * 2));
 
-	let image = if w < image.width() || h < image.height() {
+	let image = if settings.fast {
+		image.scale_to::<scaler::Nearest>(w, h)
+	}
+	else if w < image.width() || h < image.height() {
 		image.scale_to::<scaler::Lanczos3>(w, h)
 	}
 	else {
@@ -135,7 +148,7 @@ pub fn encode<W: Write>(settings: &Settings, image: &buffer::Rgba, output: W) ->
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
 						SIXEL::Color::Rgba(r, g, b, a)), true)?;
 				}
-				else if !settings.hsl {
+				else if !settings.high {
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
 						SIXEL::Color::Rgb(r, g, b)), true)?;
 				}
