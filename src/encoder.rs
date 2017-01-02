@@ -138,22 +138,23 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 			}
 		}
 
-		// Register the colors if needed.
-		for &(r, g, b, a) in &colors {
-			if !register.contains_key(&(r, g, b, a)) {
-				register.insert((r, g, b, a), id);
+		// For each color generate the sixel line.
+		for color in &colors {
+		  // Register the color if needed.
+			if !register.contains_key(color) {
+				register.insert(*color, id);
 
 				// Print the properly colored register.
 				if settings.colors.is_none() {
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
-						SIXEL::Color::Rgba(r, g, b, a)), true)?;
+						SIXEL::Color::Rgba(color.0, color.1, color.2, color.3)), true)?;
 				}
 				else if !settings.high {
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
-						SIXEL::Color::Rgb(r, g, b)), true)?;
+						SIXEL::Color::Rgb(color.0, color.1, color.2)), true)?;
 				}
 				else {
-					let hsl = Hsl::<f32>::from(Rgba::new_u8(r, g, b, a));
+					let hsl = Hsl::<f32>::from(Rgba::from_pixel(color));
 
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
 						SIXEL::Color::Hsl(
@@ -164,10 +165,7 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 
 				id += 1;
 			}
-		}
 
-		// For each color generate the sixel line.
-		for color in &colors {
 			control::format_to(output.by_ref(), &SIXEL::Enable(
 				*register.get(color).unwrap()), true)?;
 
