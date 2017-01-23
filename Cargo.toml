@@ -17,11 +17,12 @@ panic = "abort"
 [dev-dependencies]
 # Examples.
 clap = "2"
+ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
 
 [dependencies]
-control-code = "0.5.7"
+control-code = "0.6"
 termsize     = { git = "https://github.com/meh/termsize" }
-terminfo     = "0.1"
+terminfo     = "0.2"
 
 picto = "0.4"
 fnv   = "1.0"

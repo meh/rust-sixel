@@ -15,6 +15,7 @@
 extern crate clap;
 use clap::{App, Arg};
 
+#[macro_use(expand)]
 extern crate terminfo;
 use terminfo::{Database, capability as cap, Expand};
 
@@ -28,7 +29,7 @@ use picto::color::Rgba;
 
 use std::io::{self, Write};
 use std::thread;
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 fn main() {
 	ffmpeg::init().unwrap();
@@ -90,14 +91,15 @@ fn main() {
 
 	// Start the decoding thread.
 	let frames = decode(context, codec, stream);
+	let quit   = watcher();
 
 	// Make the cursor invisible.
-	io::stdout().write_all(&info.get::<cap::CursorInvisible>().unwrap()
-		.expand(&[], &mut Default::default()).unwrap()).unwrap();
+	expand!(io::stdout(),
+		info.get::<cap::CursorInvisible>().unwrap()).unwrap();
 
 	// Clear the screen.
-	io::stdout().write_all(&info.get::<cap::ClearScreen>().unwrap()
-		.expand(&[], &mut Default::default()).unwrap()).unwrap();
+	expand!(io::stdout(),
+		info.get::<cap::ClearScreen>().unwrap()).unwrap();
 
 	loop {
 		let mut frame = None;
@@ -109,14 +111,26 @@ fn main() {
 
 		if let Some(frame) = frame {
 			// Move the cursor home.
-			io::stdout().write_all(&info.get::<cap::CursorHome>().unwrap()
-				.expand(&[], &mut Default::default()).unwrap()).unwrap();
+			expand!(io::stdout(),
+				info.get::<cap::CursorHome>().unwrap()).unwrap();
 
 			// Encode the image to sixels and print to stdout.
 			let image = picto::view::Read::<Rgba, u8>::with_stride(frame.width(), frame.height(), frame.stride(0), frame.data(0)).unwrap();
 			encoder::encode(&settings, &image, io::stdout()).unwrap();
 		}
+
+		if let Err(TryRecvError::Disconnected) = quit.try_recv() {
+			break;
+		}
 	}
+
+	// Make the cursor visible.
+	expand!(io::stdout(),
+		info.get::<cap::CursorNormal>().unwrap()).unwrap();
+
+	// Clear the screen.
+	expand!(io::stdout(),
+		info.get::<cap::ClearScreen>().unwrap()).unwrap();
 }
 
 fn decode(mut context: ffmpeg::format::context::Input, mut codec: ffmpeg::decoder::Video, (index, time_base): (usize, f64)) -> Receiver<ffmpeg::frame::Video> {
@@ -143,6 +157,19 @@ fn decode(mut context: ffmpeg::format::context::Input, mut codec: ffmpeg::decode
 				sender.send(frame).unwrap();
 			}
 		}
+	});
+
+	receiver
+}
+
+fn watcher() -> Receiver<()> {
+	let (sender, receiver) = channel();
+
+	thread::spawn(move || {
+		let mut string = String::new();
+		io::stdin().read_line(&mut string).unwrap();
+
+		sender.send(()).unwrap();
 	});
 
 	receiver
