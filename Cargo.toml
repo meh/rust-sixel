@@ -20,9 +20,9 @@ clap = "2"
 ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
 
 [dependencies]
-control-code = "0.6"
+control-code = "0.7"
 termsize     = { git = "https://github.com/meh/termsize" }
-terminfo     = "0.2"
+terminfo     = "0.4"
 
 picto = "0.4"
 fnv   = "1.0"

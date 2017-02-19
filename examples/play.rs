@@ -15,9 +15,8 @@
 extern crate clap;
 use clap::{App, Arg};
 
-#[macro_use(expand)]
 extern crate terminfo;
-use terminfo::{Database, capability as cap, Expand};
+use terminfo::{Database, capability as cap};
 
 extern crate sixel;
 use sixel::{Environment, encoder};
@@ -27,7 +26,7 @@ extern crate ffmpeg;
 extern crate picto;
 use picto::color::Rgba;
 
-use std::io::{self, Write};
+use std::io;
 use std::thread;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
@@ -94,12 +93,10 @@ fn main() {
 	let quit   = watcher();
 
 	// Make the cursor invisible.
-	expand!(io::stdout(),
-		info.get::<cap::CursorInvisible>().unwrap()).unwrap();
+	info.get::<cap::CursorInvisible>().unwrap().expand().to(io::stdout()).unwrap();
 
 	// Clear the screen.
-	expand!(io::stdout(),
-		info.get::<cap::ClearScreen>().unwrap()).unwrap();
+	info.get::<cap::ClearScreen>().unwrap().expand().to(io::stdout()).unwrap();
 
 	loop {
 		let mut frame = None;
@@ -111,8 +108,7 @@ fn main() {
 
 		if let Some(frame) = frame {
 			// Move the cursor home.
-			expand!(io::stdout(),
-				info.get::<cap::CursorHome>().unwrap()).unwrap();
+			info.get::<cap::CursorHome>().unwrap().expand().to(io::stdout()).unwrap();
 
 			// Encode the image to sixels and print to stdout.
 			let image = picto::view::Read::<Rgba, u8>::with_stride(frame.width(), frame.height(), frame.stride(0), frame.data(0)).unwrap();
@@ -125,12 +121,10 @@ fn main() {
 	}
 
 	// Make the cursor visible.
-	expand!(io::stdout(),
-		info.get::<cap::CursorNormal>().unwrap()).unwrap();
+	info.get::<cap::CursorNormal>().unwrap().expand().to(io::stdout()).unwrap();
 
 	// Clear the screen.
-	expand!(io::stdout(),
-		info.get::<cap::ClearScreen>().unwrap()).unwrap();
+	info.get::<cap::ClearScreen>().unwrap().expand().to(io::stdout()).unwrap();
 }
 
 fn decode(mut context: ffmpeg::format::context::Input, mut codec: ffmpeg::decoder::Video, (index, time_base): (usize, f64)) -> Receiver<ffmpeg::frame::Video> {

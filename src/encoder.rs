@@ -147,11 +147,11 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 				// Print the properly colored register.
 				if settings.colors.is_none() {
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
-						SIXEL::Color::Rgba(color.0, color.1, color.2, color.3)), true)?;
+						SIXEL::Color::Rgba(color.0, color.1, color.2, color.3)))?;
 				}
 				else if !settings.high {
 					control::format_to(output.by_ref(), &SIXEL::Define(id,
-						SIXEL::Color::Rgb(color.0, color.1, color.2)), true)?;
+						SIXEL::Color::Rgb(color.0, color.1, color.2)))?;
 				}
 				else {
 					let hsl = Hsl::<f32>::from(Rgba::from_pixel(color));
@@ -160,14 +160,14 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 						SIXEL::Color::Hsl(
 							hsl.hue.to_positive_degrees() as u16,
 							(hsl.saturation * 100.0) as u8,
-							(hsl.lightness * 100.0) as u8)), true)?;
+							(hsl.lightness * 100.0) as u8)))?;
 				}
 
 				id += 1;
 			}
 
 			control::format_to(output.by_ref(), &SIXEL::Enable(
-				*register.get(color).unwrap()), true)?;
+				*register.get(color).unwrap()))?;
 
 			let mut previous = None;
 			let mut count    = 0;
@@ -191,7 +191,7 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 						}
 						else {
 							SIXEL::Repeat(count, value)
-						}, true)?;
+						})?;
 
 						previous = Some(current);
 						count    = 1;
@@ -209,13 +209,13 @@ pub fn encode<'a, T, W>(settings: &Settings, image: T, output: W) -> io::Result<
 				}
 				else {
 					SIXEL::Repeat(count, value)
-				}, true)?;
+				})?;
 			}
 
-			control::format_to(output.by_ref(), &SIXEL::CarriageReturn, true)?;
+			control::format_to(output.by_ref(), &SIXEL::CarriageReturn)?;
 		}
 
-		control::format_to(output.by_ref(), &SIXEL::LineFeed, true)?;
+		control::format_to(output.by_ref(), &SIXEL::LineFeed)?;
 	}
 
 	output.write_all(b"\x1B\\")?;
